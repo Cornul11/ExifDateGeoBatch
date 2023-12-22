@@ -1,5 +1,5 @@
-from PyQt5.QtCore import QThread, pyqtSignal, QDir
-from PyQt5.QtGui import QPixmap, QIcon, QStandardItem
+from PyQt6.QtCore import QThread, pyqtSignal, QDir
+from PyQt6.QtGui import QPixmap, QIcon, QStandardItem
 
 
 class ImageLoaderThread(QThread):

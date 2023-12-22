@@ -4,14 +4,27 @@ import sys
 from datetime import datetime
 
 import piexif
-from PyQt5.QtCore import QSize, Qt
-from PyQt5.QtGui import QStandardItemModel
-from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QWidget, QVBoxLayout, \
-    QDesktopWidget, QAbstractItemView, QListView, QLineEdit, QPushButton, QSplitter, QGroupBox, \
-    QFormLayout, QStatusBar, QFileDialog, QSlider, QHBoxLayout, QSpacerItem, QSizePolicy, QProgressBar
+from PyQt6.QtCore import QSize, Qt, QUrl, QObject, pyqtSlot, QDate
+from PyQt6.QtGui import QStandardItemModel
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QWidget, QVBoxLayout, \
+    QAbstractItemView, QListView, QLineEdit, QPushButton, QSplitter, QGroupBox, \
+    QFormLayout, QStatusBar, QFileDialog, QSlider, QHBoxLayout, QSpacerItem, QSizePolicy, QProgressBar, QDateEdit
 
 from custom_list_view import CustomListView
 from image_loader import ImageLoaderThread
+
+
+class PythonBridge(QObject):
+    def __init__(self, window):
+        super().__init__()
+        self.main_window = window
+
+    @pyqtSlot(float, float)
+    def coordinatesChanged(self, lat, lng):
+        if self.main_window:
+            self.main_window.set_coordinates(lat, lng)
 
 
 class ImageConfigApp(QMainWindow):
@@ -33,9 +46,11 @@ class ImageConfigApp(QMainWindow):
 
         # Right pane: configs
         config_widget = QWidget()
+        config_widget.setMaximumWidth(800)
         self.config_layout = QVBoxLayout(config_widget)
 
         self.init_batch_edit_widgets()
+        self.hide_batch_edit_widgets()
         self.setup_config_panel()
 
         splitter.addWidget(self.image_list_widget)
@@ -50,22 +65,15 @@ class ImageConfigApp(QMainWindow):
         self.statusBar.addPermanentWidget(self.progress_bar)
 
         self.thumbnail_size_control = QWidget()
-        self.init_thubmnail_size_slider()
+        self.init_thumbnail_size_slider()
 
+        self.init_map_ui()
 
         self.center_window()
 
         self.setStyleSheet("""
             QLabel {
                 font-size: 14px;
-            }
-            QPushButton {
-                padding: 5px;
-                background-color: #efefef;
-                border: 1px solid #c0c0c0;
-            }
-            QPushButton:hover {
-                background-color: #d0d0d0;
             }
             QLineEdit {
                 border: 1px solid #c0c0c0;
@@ -76,12 +84,29 @@ class ImageConfigApp(QMainWindow):
             }
         """)
 
-    def init_thubmnail_size_slider(self):
+    def init_map_ui(self):
+        self.map_view = QWebEngineView()
+        # self.setCentralWidget(self.map_view)
+
+        self.channel = QWebChannel(self.map_view.page())
+        self.map_view.page().setWebChannel(self.channel)
+
+        self.pybridge = PythonBridge(self)
+        self.channel.registerObject("pybridge", self.pybridge)
+
+        self.map_view.load(QUrl("https://cornul11.github.io/"))
+
+        self.config_layout.addWidget(self.map_view)
+
+    def set_coordinates(self, lat, lng):
+        self.gps_edit.setText(f"{lat}, {lng}")
+
+    def init_thumbnail_size_slider(self):
         thumbnail_size_layout = QHBoxLayout(self.thumbnail_size_control)
         thumbnail_size_layout.setContentsMargins(0, 0, 0, 0)
-        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         thumbnail_size_layout.addSpacerItem(spacer)
-        self.thumbnail_size_slider = QSlider(Qt.Horizontal, self)
+        self.thumbnail_size_slider = QSlider(Qt.Orientation.Horizontal, self)
         self.thumbnail_size_slider.setMinimum(50)
         self.thumbnail_size_slider.setMaximum(200)
         self.thumbnail_size_slider.setValue(100)
@@ -97,7 +122,12 @@ class ImageConfigApp(QMainWindow):
     def init_batch_edit_widgets(self):
         self.directory_btn = QPushButton("Select Directory")
         self.directory_btn.clicked.connect(self.select_directory)
-        self.date_edit = QLineEdit()
+
+        self.date_edit = QDateEdit()
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setDate(datetime.today())
+
         self.gps_edit = QLineEdit()
         self.apply_btn = QPushButton("Apply changes")
         self.apply_btn.clicked.connect(self.apply_batch_edit)
@@ -111,20 +141,22 @@ class ImageConfigApp(QMainWindow):
             self.statusBar.showMessage("No directory selected", 5000)
 
     def hide_batch_edit_widgets(self):
-        self.date_edit.hide()
-        self.gps_edit.hide()
-        self.apply_btn.hide()
+        self.date_edit.setEnabled(False)
+        self.date_edit.setDate(datetime.today())
+        self.gps_edit.clear()
+        self.gps_edit.setEnabled(False)
+        self.apply_btn.setEnabled(False)
 
     def prepare_batch_edit(self):
         self.exif_data_label.setText("")
         self.show_batch_edit_widgets()
 
     def show_batch_edit_widgets(self, single_image=True):
-        self.date_edit.show()
-        self.gps_edit.show()
-        self.apply_btn.show()
+        self.date_edit.setEnabled(True)
+        self.gps_edit.setEnabled(True)
+        self.apply_btn.setEnabled(True)
         if not single_image:
-            self.date_edit.clear()
+            self.date_edit.setDate(datetime.today())
             self.gps_edit.clear()
 
     def on_image_selected(self, selected, deselected):
@@ -154,9 +186,10 @@ class ImageConfigApp(QMainWindow):
     def show_exif_data(self, exif_dict, filename):
         exif_data_texts = [f"File: {filename}"]
         current_date = current_gps = ""
-
+        date_parts = None
         if piexif.ExifIFD.DateTimeOriginal in exif_dict['Exif']:
             current_date = exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal].decode('utf-8')
+            date_parts = current_date[:10].split(':')
             current_date = current_date[:10].replace(':', '-')
             exif_data_texts.append(f"Original Creation Date: {current_date}")
 
@@ -166,7 +199,7 @@ class ImageConfigApp(QMainWindow):
             exif_data_texts.append(f"GPS Coordinates: {current_gps}")
 
         self.exif_data_label.setText("\n".join(exif_data_texts))
-        self.date_edit.setText(current_date)
+        self.date_edit.setDate(QDate(int(date_parts[0]), int(date_parts[1]), int(date_parts[2])))
         self.gps_edit.setText(current_gps)
 
     def format_gps_display(self, gps_data):
@@ -231,7 +264,7 @@ class ImageConfigApp(QMainWindow):
         return bool(gps_pattern.match(gps_str))
 
     def apply_batch_edit(self):
-        new_date = self.date_edit.text()
+        new_date = self.date_edit.date().toString("yyyy-MM-dd")
         new_gps = self.gps_edit.text()
 
         if not self.is_valid_date(new_date):
@@ -272,7 +305,7 @@ class ImageConfigApp(QMainWindow):
             self.image_list_widget.clearSelection()
 
     def center_window(self):
-        screen_geometry = QDesktopWidget().screenGeometry()
+        screen_geometry = QApplication.primaryScreen().geometry()
         x = (screen_geometry.width() - self.width()) / 2
         y = (screen_geometry.height() - self.height()) / 2
         self.move(int(x), int(y))
@@ -304,15 +337,15 @@ class ImageConfigApp(QMainWindow):
         self.image_list_widget.selectionModel().selectionChanged.connect(self.on_image_selected)
 
     def setup_image_list(self):
-        self.image_list_widget.setViewMode(QListView.IconMode)
+        self.image_list_widget.setViewMode(QListView.ViewMode.IconMode)
         self.image_list_widget.setIconSize(QSize(100, 100))
         self.image_list_widget.setGridSize(QSize(120, 120))
         self.image_list_widget.setSpacing(10)
-        self.image_list_widget.setFlow(QListView.LeftToRight)
-        self.image_list_widget.setResizeMode(QListView.Adjust)
+        self.image_list_widget.setFlow(QListView.Flow.LeftToRight)
+        self.image_list_widget.setResizeMode(QListView.ResizeMode.Adjust)
 
-        self.image_list_widget.setSelectionMode(QAbstractItemView.MultiSelection)
-        self.image_list_widget.setDragDropMode(QAbstractItemView.NoDragDrop)
+        self.image_list_widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.image_list_widget.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
 
     def setup_config_panel(self):
         # Configuration Group for displaying EXIF data
@@ -357,4 +390,4 @@ if __name__ == '__main__':
     mainWin = ImageConfigApp()
     mainWin.show()
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QListView
+from PyQt6.QtWidgets import QListView
 
 
 class CustomListView(QListView):
