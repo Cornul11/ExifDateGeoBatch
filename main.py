@@ -1,9 +1,14 @@
+import os
+import re
 import sys
+from datetime import datetime
 
+import piexif
 from PyQt5.QtCore import QDir, QSize
 from PyQt5.QtGui import QPixmap, QIcon, QStandardItemModel, QStandardItem
-from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, \
-    QDesktopWidget, QAbstractItemView, QListView, QGridLayout
+from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QWidget, QVBoxLayout, \
+    QDesktopWidget, QAbstractItemView, QListView, QLineEdit, QPushButton, QSplitter, QGroupBox, \
+    QFormLayout, QStatusBar
 
 
 class ImageConfigApp(QMainWindow):
@@ -13,37 +18,210 @@ class ImageConfigApp(QMainWindow):
 
         self.setWindowTitle("Exif GUI editor")
 
-        # Central widget
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-
-        # Main layout: horizontal
-        self.main_layout = QHBoxLayout(self.central_widget)
+        splitter = QSplitter(self)
+        self.setCentralWidget(splitter)
 
         # Left pane: image list
         self.image_list_widget = QListView()
-        self.image_list_widget.setViewMode(QListView.IconMode)
-        self.image_list_widget.setIconSize(QSize(150, 150))
-        self.image_list_widget.setGridSize(QSize(160, 180))
-        self.image_list_widget.setSpacing(10)
-        self.image_list_widget.setFlow(QListView.LeftToRight)
-        self.image_list_widget.setResizeMode(QListView.Adjust)
-
-        self.image_list_widget.setSelectionMode(QAbstractItemView.MultiSelection)
-        self.image_list_widget.setDragDropMode(QAbstractItemView.NoDragDrop)
-
-        self.grid_layout = QGridLayout(self.image_list_widget)
-        self.main_layout.addWidget(self.image_list_widget)
+        self.setup_image_list()
 
         # Right pane: configs
-        self.config_layout = QVBoxLayout()
-        self.config_label = QLabel("Configurations here")
-        self.config_layout.addWidget(self.config_label)
-        self.main_layout.addLayout(self.config_layout)
+        config_widget = QWidget()
+        self.config_layout = QVBoxLayout(config_widget)
+
+        self.init_batch_edit_widgets()
+        self.setup_config_panel()
+
+        splitter.addWidget(self.image_list_widget)
+        splitter.addWidget(config_widget)
 
         self.load_images_from_folder("/home/dan/Pictures/")
-
+        self.image_list_widget.selectionModel().selectionChanged.connect(self.on_image_selected)
         self.center_window()
+
+        self.statusBar = QStatusBar()
+        self.setStatusBar(self.statusBar)
+
+        self.setStyleSheet("""
+            QLabel {
+                font-size: 14px;
+            }
+            QPushButton {
+                padding: 5px;
+                background-color: #efefef;
+                border: 1px solid #c0c0c0;
+            }
+            QPushButton:hover {
+                background-color: #d0d0d0;
+            }
+            QLineEdit {
+                border: 1px solid #c0c0c0;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+            }
+        """)
+
+    def init_batch_edit_widgets(self):
+        self.date_edit = QLineEdit()
+        self.gps_edit = QLineEdit()
+        self.apply_btn = QPushButton("Apply changes")
+        self.apply_btn.clicked.connect(self.apply_batch_edit)
+
+    def hide_batch_edit_widgets(self):
+        self.date_edit.hide()
+        self.gps_edit.hide()
+        self.apply_btn.hide()
+
+    def prepare_batch_edit(self):
+        self.exif_data_label.setText("")
+        self.show_batch_edit_widgets()
+
+    def show_batch_edit_widgets(self, single_image=True):
+        self.date_edit.show()
+        self.gps_edit.show()
+        self.apply_btn.show()
+        if not single_image:
+            self.date_edit.clear()
+            self.gps_edit.clear()
+
+    def on_image_selected(self, selected, deselected):
+        indexes = self.image_list_widget.selectedIndexes()
+        if not indexes:
+            self.hide_batch_edit_widgets()
+            return
+
+        self.display_exif_data(indexes)
+
+    def display_exif_data(self, indexes):
+        if len(indexes) == 1:
+            filename = indexes[0].data()
+            filepath = os.path.join("/home/dan/Pictures/", filename)
+            try:
+                exif_dict = piexif.load(filepath)
+                self.show_exif_data(exif_dict, filename)
+            except Exception as e:
+                print(f"Error processing file {filepath}: {e}")
+                self.exif_data_label.setText(f"{filename}: Error reading EXIF data - {e}")
+            self.show_batch_edit_widgets(single_image=True)
+        else:
+            self.exif_data_label.setText("Multiple images selected.\nApply batch EXIF data changes.")
+            self.show_batch_edit_widgets(single_image=False)
+
+    def show_exif_data(self, exif_dict, filename):
+        exif_data_texts = [f"File: {filename}"]
+        current_date = current_gps = ""
+
+        if piexif.ExifIFD.DateTimeOriginal in exif_dict['Exif']:
+            current_date = exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal].decode('utf-8')
+            exif_data_texts.append(f"Original Creation Date: {current_date}")
+
+        if 'GPS' in exif_dict:
+            gps_data = self.parse_gps_data(exif_dict['GPS'])
+            current_gps = self.format_gps_display(gps_data)
+            exif_data_texts.append(f"GPS Coordinates: {current_gps}")
+
+        self.exif_data_label.setText("\n".join(exif_data_texts))
+        self.date_edit.setText(current_date)
+        self.gps_edit.setText(current_gps)
+
+    def format_gps_display(self, gps_data):
+        lat = gps_data.get('Latitude', 'No GPS Latitude Data')
+        lon = gps_data.get('Longitude', 'No GPS Longitude Data')
+
+        return f"Latitude: {lat}, Longitude: {lon}"
+
+    def parse_gps_data(self, gps_dict):
+        gps_data = {}
+        try:
+            if piexif.GPSIFD.GPSLatitude in gps_dict and piexif.GPSIFD.GPSLatitudeRef in gps_dict:
+                lat = self.convert_to_degrees(gps_dict[piexif.GPSIFD.GPSLatitude])
+                lat_ref = gps_dict[piexif.GPSIFD.GPSLatitudeRef].decode('utf-8')
+                lat *= -1 if lat_ref != 'N' else 1
+                gps_data['Latitude'] = lat
+
+            if piexif.GPSIFD.GPSLongitude in gps_dict and piexif.GPSIFD.GPSLongitudeRef in gps_dict:
+                lon = self.convert_to_degrees(gps_dict[piexif.GPSIFD.GPSLongitude])
+                lon_ref = gps_dict[piexif.GPSIFD.GPSLongitudeRef].decode('utf-8')
+                lon *= -1 if lon_ref != 'E' else 1
+                gps_data['Longitude'] = lon
+        except KeyError as e:
+            print(f"GPS data key missing: {e}")
+        except Exception as e:
+            print(f"Error parsing GPS data: {e}")
+
+        return gps_data
+
+    def is_valid_date(self, date_str):
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+            return True
+        except ValueError:
+            return False
+
+    def convert_to_rational(self, value):
+        absolute = abs(value)
+        degrees = int(absolute)
+        minutes = int((absolute - degrees) * 60)
+        seconds = (absolute - degrees - minutes / 60) * 3600 * 100
+        return (degrees, 1), (minutes, 1), (int(seconds), 100)
+
+    def format_date_for_exif(self, date_str):
+        """Format the date in the EXIF date format."""
+        return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y:%m:%d %H:%M:%S')
+
+    def format_gps_for_exif(self, gps_str):
+        lat_str, lon_str = gps_str.split(', ')
+        lat = self.convert_to_rational(float(lat_str))
+        lon = self.convert_to_rational(float(lon_str))
+
+        return {
+            'GPSLatitude': lat,
+            'GPSLongitude': lon,
+            'GPSLatitudeRef': 'N' if float(lat_str) >= 0 else 'S',
+            'GPSLongitudeRef': 'E' if float(lon_str) >= 0 else 'W',
+        }
+
+    def is_valid_gps(self, gps_str):
+        gps_pattern = re.compile(r'^-?\d+(\.\d+)?, -?\d+(\.\d+)?$')
+        return bool(gps_pattern.match(gps_str))
+
+    def apply_batch_edit(self):
+        new_date = self.date_edit.text()
+        new_gps = self.gps_edit.text()
+
+        if not self.is_valid_date(new_date):
+            print("Invalid date format. Please use YYYY-MM-DD")
+            return
+        if not self.is_valid_gps(new_gps):
+            print("Invalid GPS format. Please use decimal degrees (lat, long).")
+            return
+
+        for index in self.image_list_widget.selectedIndexes():
+            filename = index.data()
+            filepath = os.path.join("/home/dan/Pictures/", filename)
+            self.update_exif_data(filepath, new_date, new_gps)
+
+        indexes = self.image_list_widget.selectedIndexes()
+        if len(indexes) == 1:
+            self.display_exif_data(indexes)
+
+    def update_exif_data(self, filepath, new_date, new_gps):
+        try:
+            exif_dict = piexif.load(filepath)
+
+            exif_date = self.format_date_for_exif(new_date)
+            exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal] = exif_date
+
+            exif_gps = self.format_gps_for_exif(new_gps)
+            for tag in exif_gps:
+                exif_dict['GPS'][piexif.GPSIFD.__dict__[tag]] = exif_gps[tag]
+
+            exif_bytes = piexif.dump(exif_dict)
+            piexif.insert(exif_bytes, filepath)
+        except Exception as e:
+            print(f"Error processing file {filepath}: {e}")
 
     def handle_empty_space_click(self, item):
         print(self.image_list_widget.selectedIndexes())
@@ -76,6 +254,51 @@ class ImageConfigApp(QMainWindow):
             model.appendRow(item)
 
         self.image_list_widget.setModel(model)
+
+    def setup_image_list(self):
+        self.image_list_widget.setViewMode(QListView.IconMode)
+        self.image_list_widget.setIconSize(QSize(100, 100))
+        self.image_list_widget.setGridSize(QSize(120, 120))
+        self.image_list_widget.setSpacing(10)
+        self.image_list_widget.setFlow(QListView.LeftToRight)
+        self.image_list_widget.setResizeMode(QListView.Adjust)
+
+        self.image_list_widget.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.image_list_widget.setDragDropMode(QAbstractItemView.NoDragDrop)
+
+    def setup_config_panel(self):
+        # Configuration Group for displaying EXIF data
+        exif_group = QGroupBox("EXIF Data")
+        exif_layout = QVBoxLayout()
+        exif_layout.setSpacing(10)
+        exif_layout.setContentsMargins(10, 10, 10, 10)
+        self.exif_data_label = QLabel("EXIF data will be shown here")
+        exif_layout.addWidget(self.exif_data_label)
+        exif_group.setLayout(exif_layout)
+
+        # Configuration Group for batch editing
+        edit_group = QGroupBox("Edit EXIF Data")
+        edit_layout = QFormLayout()
+        # edit_layout.setSpacing(10)
+        # edit_layout.setContentsMargins(5, 30, 20, 20)
+        edit_layout.addRow("New Date (YYYY-MM-DD):", self.date_edit)
+        edit_layout.addRow("New GPS Coordinates (lat, long):", self.gps_edit)
+        edit_layout.addRow(self.apply_btn)
+        edit_group.setLayout(edit_layout)
+
+        # Add groups to the configuration layout
+        self.config_layout.addWidget(exif_group)
+        self.config_layout.addWidget(edit_group)
+
+        self.hide_batch_edit_widgets()
+
+    def convert_to_decimal(self, lat, long):
+        return lat[0][0] + lat[1][0] / 60 + lat[2][0] / lat[2][1] / 3600, \
+               long[0][0] + long[1][0] / 60 + long[2][0] / long[2][1] / 3600
+
+    def convert_to_degrees(self, value):
+        d, m, s = value
+        return d[0] / d[1] + m[0] / m[1] / 60 + s[0] / s[1] / 3600
 
 
 if __name__ == '__main__':
