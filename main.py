@@ -4,11 +4,11 @@ import sys
 from datetime import datetime
 
 import piexif
-from PyQt5.QtCore import QDir, QSize
+from PyQt5.QtCore import QDir, QSize, Qt
 from PyQt5.QtGui import QPixmap, QIcon, QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QWidget, QVBoxLayout, \
     QDesktopWidget, QAbstractItemView, QListView, QLineEdit, QPushButton, QSplitter, QGroupBox, \
-    QFormLayout, QStatusBar, QFileDialog
+    QFormLayout, QStatusBar, QFileDialog, QSlider, QHBoxLayout, QSpacerItem, QSizePolicy
 
 
 class ImageConfigApp(QMainWindow):
@@ -17,7 +17,7 @@ class ImageConfigApp(QMainWindow):
 
         self.current_directory = ""
 
-        self.resize(QSize(800, 600))
+        self.resize(QSize(1280, 720))
 
         self.setWindowTitle("Exif GUI editor")
 
@@ -40,6 +40,24 @@ class ImageConfigApp(QMainWindow):
 
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
+
+        self.thumbnail_size_control = QWidget()
+        thumbnail_size_layout = QHBoxLayout(self.thumbnail_size_control)
+        thumbnail_size_layout.setContentsMargins(0, 0, 0, 0)
+
+        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        thumbnail_size_layout.addSpacerItem(spacer)
+
+        self.thumbnail_size_slider = QSlider(Qt.Horizontal, self)
+        self.thumbnail_size_slider.setMinimum(50)
+        self.thumbnail_size_slider.setMaximum(200)
+        self.thumbnail_size_slider.setValue(100)
+        self.thumbnail_size_slider.valueChanged.connect(self.on_thumbnail_size_changed)
+        self.thumbnail_size_slider.setFixedWidth(150)
+
+        thumbnail_size_layout.addWidget(self.thumbnail_size_slider)
+
+        self.statusBar.addPermanentWidget(self.thumbnail_size_control)
 
         self.center_window()
 
@@ -64,6 +82,10 @@ class ImageConfigApp(QMainWindow):
             }
         """)
 
+    def on_thumbnail_size_changed(self, value):
+        self.image_list_widget.setIconSize(QSize(value, value))
+        self.image_list_widget.setGridSize(QSize(value + 20, value + 20))
+
     def init_batch_edit_widgets(self):
         self.directory_btn = QPushButton("Select Directory")
         self.directory_btn.clicked.connect(self.select_directory)
@@ -78,7 +100,7 @@ class ImageConfigApp(QMainWindow):
             self.current_directory = folder_path
             self.load_images_from_folder(folder_path)
         else:
-            self.statusBar.showMessage("No directory selected.", 5000)
+            self.statusBar.showMessage("No directory selected", 5000)
 
     def hide_batch_edit_widgets(self):
         self.date_edit.hide()
@@ -289,7 +311,7 @@ class ImageConfigApp(QMainWindow):
         # Configuration Group for displaying EXIF data
         exif_group = QGroupBox("EXIF Data")
         exif_layout = QVBoxLayout()
-        exif_layout.setSpacing(10)
+        exif_layout.setSpacing(5)
         exif_layout.setContentsMargins(10, 10, 10, 10)
         self.exif_data_label = QLabel("EXIF data will be shown here")
         exif_layout.addWidget(self.exif_data_label)
@@ -298,8 +320,8 @@ class ImageConfigApp(QMainWindow):
         # Configuration Group for batch editing
         edit_group = QGroupBox("Edit EXIF Data")
         edit_layout = QFormLayout()
-        # edit_layout.setSpacing(10)
-        # edit_layout.setContentsMargins(5, 30, 20, 20)
+        edit_layout.setSpacing(5)
+        edit_layout.setContentsMargins(5, 10, 5, 10)
         edit_layout.addRow("New Date (YYYY-MM-DD):", self.date_edit)
         edit_layout.addRow("New GPS Coordinates (lat, long):", self.gps_edit)
         edit_layout.addRow(self.apply_btn)
@@ -309,6 +331,7 @@ class ImageConfigApp(QMainWindow):
         self.config_layout.addWidget(exif_group)
         self.config_layout.addWidget(edit_group)
         self.config_layout.addWidget(self.directory_btn)
+        self.config_layout.addStretch()
 
         self.hide_batch_edit_widgets()
 
