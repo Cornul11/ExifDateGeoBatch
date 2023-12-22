@@ -8,12 +8,15 @@ from PyQt5.QtCore import QDir, QSize
 from PyQt5.QtGui import QPixmap, QIcon, QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QWidget, QVBoxLayout, \
     QDesktopWidget, QAbstractItemView, QListView, QLineEdit, QPushButton, QSplitter, QGroupBox, \
-    QFormLayout, QStatusBar
+    QFormLayout, QStatusBar, QFileDialog
 
 
 class ImageConfigApp(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.current_directory = ""
+
         self.resize(QSize(800, 600))
 
         self.setWindowTitle("Exif GUI editor")
@@ -35,12 +38,10 @@ class ImageConfigApp(QMainWindow):
         splitter.addWidget(self.image_list_widget)
         splitter.addWidget(config_widget)
 
-        self.load_images_from_folder("/home/dan/Pictures/")
-        self.image_list_widget.selectionModel().selectionChanged.connect(self.on_image_selected)
-        self.center_window()
-
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
+
+        self.center_window()
 
         self.setStyleSheet("""
             QLabel {
@@ -64,10 +65,20 @@ class ImageConfigApp(QMainWindow):
         """)
 
     def init_batch_edit_widgets(self):
+        self.directory_btn = QPushButton("Select Directory")
+        self.directory_btn.clicked.connect(self.select_directory)
         self.date_edit = QLineEdit()
         self.gps_edit = QLineEdit()
         self.apply_btn = QPushButton("Apply changes")
         self.apply_btn.clicked.connect(self.apply_batch_edit)
+
+    def select_directory(self):
+        folder_path = QFileDialog.getExistingDirectory(self, "Select Directory")
+        if folder_path:
+            self.current_directory = folder_path
+            self.load_images_from_folder(folder_path)
+        else:
+            self.statusBar.showMessage("No directory selected.", 5000)
 
     def hide_batch_edit_widgets(self):
         self.date_edit.hide()
@@ -90,6 +101,7 @@ class ImageConfigApp(QMainWindow):
         indexes = self.image_list_widget.selectedIndexes()
         if not indexes:
             self.hide_batch_edit_widgets()
+            self.statusBar.showMessage("No images selected", 5000)
             return
 
         self.display_exif_data(indexes)
@@ -97,12 +109,12 @@ class ImageConfigApp(QMainWindow):
     def display_exif_data(self, indexes):
         if len(indexes) == 1:
             filename = indexes[0].data()
-            filepath = os.path.join("/home/dan/Pictures/", filename)
+            filepath = os.path.join(self.current_directory, filename)
             try:
                 exif_dict = piexif.load(filepath)
                 self.show_exif_data(exif_dict, filename)
             except Exception as e:
-                print(f"Error processing file {filepath}: {e}")
+                self.statusBar.showMessage(f"Error processing file {filepath}: {e}", 5000)
                 self.exif_data_label.setText(f"{filename}: Error reading EXIF data - {e}")
             self.show_batch_edit_widgets(single_image=True)
         else:
@@ -115,11 +127,12 @@ class ImageConfigApp(QMainWindow):
 
         if piexif.ExifIFD.DateTimeOriginal in exif_dict['Exif']:
             current_date = exif_dict['Exif'][piexif.ExifIFD.DateTimeOriginal].decode('utf-8')
+            current_date = current_date[:10].replace(':', '-')
             exif_data_texts.append(f"Original Creation Date: {current_date}")
 
         if 'GPS' in exif_dict:
             gps_data = self.parse_gps_data(exif_dict['GPS'])
-            current_gps = self.format_gps_display(gps_data)
+            current_gps = f"{gps_data.get('Latitude', '')}, {gps_data.get('Longitude', '')}".strip(', ')
             exif_data_texts.append(f"GPS Coordinates: {current_gps}")
 
         self.exif_data_label.setText("\n".join(exif_data_texts))
@@ -147,9 +160,9 @@ class ImageConfigApp(QMainWindow):
                 lon *= -1 if lon_ref != 'E' else 1
                 gps_data['Longitude'] = lon
         except KeyError as e:
-            print(f"GPS data key missing: {e}")
+            self.statusBar.showMessage(f"GPS data key missing: {e}", 5000)
         except Exception as e:
-            print(f"Error parsing GPS data: {e}")
+            self.statusBar.showMessage(f"Error parsing GPS data: {e}", 5000)
 
         return gps_data
 
@@ -192,16 +205,17 @@ class ImageConfigApp(QMainWindow):
         new_gps = self.gps_edit.text()
 
         if not self.is_valid_date(new_date):
-            print("Invalid date format. Please use YYYY-MM-DD")
+            self.statusBar.showMessage("Invalid date format. Please use YYYY-MM-DD", 5000)
             return
         if not self.is_valid_gps(new_gps):
-            print("Invalid GPS format. Please use decimal degrees (lat, long).")
+            self.statusBar.showMessage("Invalid GPS format. Please use decimal degrees (lat, long).", 5000)
             return
 
         for index in self.image_list_widget.selectedIndexes():
             filename = index.data()
-            filepath = os.path.join("/home/dan/Pictures/", filename)
+            filepath = os.path.join(self.current_directory, filename)
             self.update_exif_data(filepath, new_date, new_gps)
+        self.statusBar.showMessage("Changes applied successfully", 5000)
 
         indexes = self.image_list_widget.selectedIndexes()
         if len(indexes) == 1:
@@ -236,14 +250,13 @@ class ImageConfigApp(QMainWindow):
 
     def load_images_from_folder(self, folder_path):
         img_dir = QDir(folder_path)
-
         file_list = img_dir.entryList()
 
         model = QStandardItemModel()
 
         for file in file_list:
             # check if an image
-            if not file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
+            if not file.lower().endswith(('.jpg', '.jpeg', '.tiff')):
                 continue
 
             pixmap = QPixmap(img_dir.absoluteFilePath(file))
@@ -253,7 +266,13 @@ class ImageConfigApp(QMainWindow):
             item.setSelectable(True)
             model.appendRow(item)
 
+        if model.rowCount() == 0:
+            self.statusBar.showMessage("No images found in directory.", 5000)
+
         self.image_list_widget.setModel(model)
+        self.image_list_widget.selectionModel().selectionChanged.connect(self.on_image_selected)
+
+        self.statusBar.showMessage(f"Loaded {model.rowCount()} images from {folder_path}", 5000)
 
     def setup_image_list(self):
         self.image_list_widget.setViewMode(QListView.IconMode)
@@ -289,6 +308,7 @@ class ImageConfigApp(QMainWindow):
         # Add groups to the configuration layout
         self.config_layout.addWidget(exif_group)
         self.config_layout.addWidget(edit_group)
+        self.config_layout.addWidget(self.directory_btn)
 
         self.hide_batch_edit_widgets()
 
