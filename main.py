@@ -4,11 +4,14 @@ import sys
 from datetime import datetime
 
 import piexif
-from PyQt5.QtCore import QDir, QSize, Qt
-from PyQt5.QtGui import QPixmap, QIcon, QStandardItemModel, QStandardItem
+from PyQt5.QtCore import QSize, Qt
+from PyQt5.QtGui import QStandardItemModel
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QWidget, QVBoxLayout, \
     QDesktopWidget, QAbstractItemView, QListView, QLineEdit, QPushButton, QSplitter, QGroupBox, \
-    QFormLayout, QStatusBar, QFileDialog, QSlider, QHBoxLayout, QSpacerItem, QSizePolicy
+    QFormLayout, QStatusBar, QFileDialog, QSlider, QHBoxLayout, QSpacerItem, QSizePolicy, QProgressBar
+
+from custom_list_view import CustomListView
+from image_loader import ImageLoaderThread
 
 
 class ImageConfigApp(QMainWindow):
@@ -25,7 +28,7 @@ class ImageConfigApp(QMainWindow):
         self.setCentralWidget(splitter)
 
         # Left pane: image list
-        self.image_list_widget = QListView()
+        self.image_list_widget = CustomListView()
         self.setup_image_list()
 
         # Right pane: configs
@@ -41,23 +44,14 @@ class ImageConfigApp(QMainWindow):
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
 
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.hide()
+        self.statusBar.addPermanentWidget(self.progress_bar)
+
         self.thumbnail_size_control = QWidget()
-        thumbnail_size_layout = QHBoxLayout(self.thumbnail_size_control)
-        thumbnail_size_layout.setContentsMargins(0, 0, 0, 0)
+        self.init_thubmnail_size_slider()
 
-        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-        thumbnail_size_layout.addSpacerItem(spacer)
-
-        self.thumbnail_size_slider = QSlider(Qt.Horizontal, self)
-        self.thumbnail_size_slider.setMinimum(50)
-        self.thumbnail_size_slider.setMaximum(200)
-        self.thumbnail_size_slider.setValue(100)
-        self.thumbnail_size_slider.valueChanged.connect(self.on_thumbnail_size_changed)
-        self.thumbnail_size_slider.setFixedWidth(150)
-
-        thumbnail_size_layout.addWidget(self.thumbnail_size_slider)
-
-        self.statusBar.addPermanentWidget(self.thumbnail_size_control)
 
         self.center_window()
 
@@ -81,6 +75,20 @@ class ImageConfigApp(QMainWindow):
                 left: 10px;
             }
         """)
+
+    def init_thubmnail_size_slider(self):
+        thumbnail_size_layout = QHBoxLayout(self.thumbnail_size_control)
+        thumbnail_size_layout.setContentsMargins(0, 0, 0, 0)
+        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        thumbnail_size_layout.addSpacerItem(spacer)
+        self.thumbnail_size_slider = QSlider(Qt.Horizontal, self)
+        self.thumbnail_size_slider.setMinimum(50)
+        self.thumbnail_size_slider.setMaximum(200)
+        self.thumbnail_size_slider.setValue(100)
+        self.thumbnail_size_slider.valueChanged.connect(self.on_thumbnail_size_changed)
+        self.thumbnail_size_slider.setFixedWidth(150)
+        thumbnail_size_layout.addWidget(self.thumbnail_size_slider)
+        self.statusBar.addPermanentWidget(self.thumbnail_size_control)
 
     def on_thumbnail_size_changed(self, value):
         self.image_list_widget.setIconSize(QSize(value, value))
@@ -257,10 +265,9 @@ class ImageConfigApp(QMainWindow):
             exif_bytes = piexif.dump(exif_dict)
             piexif.insert(exif_bytes, filepath)
         except Exception as e:
-            print(f"Error processing file {filepath}: {e}")
+            self.statusBar.showMessage(f"Error processing file {filepath}: {e}")
 
     def handle_empty_space_click(self, item):
-        print(self.image_list_widget.selectedIndexes())
         if not self.image_list_widget.selectedIndexes():
             self.image_list_widget.clearSelection()
 
@@ -271,30 +278,30 @@ class ImageConfigApp(QMainWindow):
         self.move(int(x), int(y))
 
     def load_images_from_folder(self, folder_path):
-        img_dir = QDir(folder_path)
-        file_list = img_dir.entryList()
+        self.progress_bar.show()
+        self.progress_bar.setValue(0)
 
+        self.image_loader_thread = ImageLoaderThread(folder_path)
+        self.image_loader_thread.progress_update.connect(self.on_progress_update)
+        self.image_loader_thread.finished_loading.connect(self.on_finished_loading)
+        self.image_loader_thread.start()
+
+    def on_progress_update(self, progress):
+        self.progress_bar.setValue(progress)
+
+    def on_finished_loading(self, images):
+        self.populate_image_list(images)
+        self.progress_bar.hide()
+
+    def populate_image_list(self, images):
         model = QStandardItemModel()
+        for image in images:
+            model.appendRow(image)
 
-        for file in file_list:
-            # check if an image
-            if not file.lower().endswith(('.jpg', '.jpeg', '.tiff')):
-                continue
-
-            pixmap = QPixmap(img_dir.absoluteFilePath(file))
-            icon = QIcon(pixmap)
-
-            item = QStandardItem(icon, file)
-            item.setSelectable(True)
-            model.appendRow(item)
-
-        if model.rowCount() == 0:
-            self.statusBar.showMessage("No images found in directory.", 5000)
+        self.statusBar.showMessage(f"Loaded {model.rowCount()} images from {self.current_directory}", 5000)
 
         self.image_list_widget.setModel(model)
         self.image_list_widget.selectionModel().selectionChanged.connect(self.on_image_selected)
-
-        self.statusBar.showMessage(f"Loaded {model.rowCount()} images from {folder_path}", 5000)
 
     def setup_image_list(self):
         self.image_list_widget.setViewMode(QListView.IconMode)
