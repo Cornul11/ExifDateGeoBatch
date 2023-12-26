@@ -9,10 +9,11 @@ def convert_to_decimal(lat, long):
     )
 
 
-
 def format_date_for_exif(date_str):
     """Format the date in the EXIF date format."""
     return datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y:%m:%d %H:%M:%S")
+
+
 def convert_to_degrees(value):
     d, m, s = value
     return d[0] / d[1] + m[0] / m[1] / 60 + s[0] / s[1] / 3600

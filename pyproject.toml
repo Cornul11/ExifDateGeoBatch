@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ExifDateGeoBatch"
+version = "0.1.0"
+description = "Efficiently manage and update photo EXIF data with ease. Built with PyQt6 and Piexif, this tool offers intuitive batch editing of the dates and coordinates of an image."
+authors = [{ name = "Dan Plamadeala", email = "cornul11@gmail.com" }]
+license = { text = "GPL-3.0-or-later" }
+dependencies = [
+    "piexif==1.1.3",
+    "PyQt6==6.6.1",
+    "PyQt6-Qt6==6.6.1",
+    "PyQt6-sip==13.6.0",
+    "PyQt6-WebEngine==6.6.0",
+    "PyQt6-WebEngine-Qt6==6.6.1"
+]
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: Editors",
+    "Topic :: Multimedia :: Graphics"
+]
+
+[project.scripts]
+ExifDateGeoBatch = "exifdategeobatch.main:main"
+
+[project.gui-scripts]
+ExifDateGeoBatch = "exifdategeobatch.main:main"

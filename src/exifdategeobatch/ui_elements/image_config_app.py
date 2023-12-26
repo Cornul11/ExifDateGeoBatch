@@ -29,11 +29,11 @@ from PyQt6.QtWidgets import (
     QFormLayout,
 )
 
-from custom_widgets.custom_list_view import CustomListView
-from utils.exif_utils import convert_to_degrees
-from utils.exif_utils import format_gps_for_exif, is_valid_gps, format_date_for_exif
-from utils.image_loader_thread import ImageLoaderThread
-from utils.python_bridge import PythonBridge
+from exifdategeobatch.custom_widgets.custom_list_view import CustomListView
+from exifdategeobatch.utils.exif_utils import convert_to_degrees
+from exifdategeobatch.utils.exif_utils import format_gps_for_exif, is_valid_gps, format_date_for_exif
+from exifdategeobatch.utils.image_loader_thread import ImageLoaderThread
+from exifdategeobatch.utils.python_bridge import PythonBridge
 
 MAP_URL = "https://cornul11.github.io/"
 
