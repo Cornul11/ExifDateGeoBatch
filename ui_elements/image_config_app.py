@@ -94,6 +94,10 @@ class ImageExifEditor(QMainWindow):
                 subcontrol-origin: margin;
                 left: 10px;
             }
+
+            ::disabled {
+                color: gray;
+            }
         """
         )
 
