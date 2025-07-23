@@ -311,7 +311,10 @@ class ImageExifEditor(QMainWindow):
         self.progress_bar.show()
         self.progress_bar.setValue(0)
 
-        self.image_loader_thread = ImageLoaderThread(folder_path)
+        self.image_loader_thread = ImageLoaderThread(
+            folder_path,
+            self.thumbnail_size_slider.maximum()
+        )
         self.image_loader_thread.progress_update.connect(self.on_progress_update)
         self.image_loader_thread.finished_loading.connect(self.on_finished_loading)
         self.image_loader_thread.start()
