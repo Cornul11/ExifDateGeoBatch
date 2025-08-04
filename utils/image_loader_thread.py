@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QThread, pyqtSignal, QDir, Qt, QSize
-from PyQt6.QtGui import QPixmap, QIcon, QStandardItem
+from PyQt6.QtCore import QDir, QSize, Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QIcon, QPixmap, QStandardItem
 
 
 class ImageLoaderThread(QThread):
@@ -13,14 +13,13 @@ class ImageLoaderThread(QThread):
 
     def run(self):
         img_dir = QDir(self.folder_path)
-        file_list = img_dir.entryList(['*.jpg', '*.png', '*.bmp'])
+        file_list = img_dir.entryList(["*.jpg", "*.png", "*.bmp"])
         total_files = len(file_list)
         loaded_images = []
 
         for i, file in enumerate(file_list):
             pixmap = QPixmap(img_dir.absoluteFilePath(file)).scaled(
-                self.thumbnail_size,
-                Qt.AspectRatioMode.KeepAspectRatio
+                self.thumbnail_size, Qt.AspectRatioMode.KeepAspectRatio
             )
             icon = QIcon(pixmap)
 

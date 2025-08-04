@@ -1,37 +1,42 @@
-import os
 from datetime import datetime
+from pathlib import Path
 
 import piexif
-from PyQt6.QtCore import QSize, Qt, QDate, QUrl
+from PyQt6.QtCore import QDate, QSize, Qt, QUrl
 from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
-    QMainWindow,
-    QSplitter,
-    QWidget,
-    QVBoxLayout,
-    QStatusBar,
-    QProgressBar,
+    QAbstractItemView,
+    QApplication,
+    QDateEdit,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
-    QSpacerItem,
+    QLabel,
+    QLineEdit,
+    QListView,
+    QMainWindow,
+    QProgressBar,
+    QPushButton,
     QSizePolicy,
     QSlider,
-    QPushButton,
-    QDateEdit,
-    QLineEdit,
-    QFileDialog,
-    QApplication,
-    QListView,
-    QAbstractItemView,
-    QGroupBox,
-    QLabel,
-    QFormLayout,
+    QSpacerItem,
+    QSplitter,
+    QStatusBar,
+    QVBoxLayout,
+    QWidget,
 )
 
 from custom_widgets.custom_list_view import CustomListView
-from utils.exif_utils import convert_to_degrees
-from utils.exif_utils import format_gps_for_exif, is_valid_date, is_valid_gps, format_date_for_exif
+from utils.exif_utils import (
+    convert_to_degrees,
+    format_date_for_exif,
+    format_gps_for_exif,
+    is_valid_date,
+    is_valid_gps,
+)
 from utils.image_loader_thread import ImageLoaderThread
 from utils.python_bridge import PythonBridge
 
@@ -190,7 +195,7 @@ class ImageExifEditor(QMainWindow):
     def display_exif_data(self, indexes):
         if len(indexes) == 1:
             filename = indexes[0].data()
-            filepath = os.path.join(self.current_directory, filename)
+            filepath = Path(self.current_directory) / filename
             try:
                 exif_dict = piexif.load(filepath)
                 self.show_exif_data(exif_dict, filename)
@@ -220,7 +225,7 @@ class ImageExifEditor(QMainWindow):
             current_date = current_date[:10].replace(":", "-")
             exif_data_texts.append(f"Original Creation Date: {current_date}")
         else:
-            exif_data_texts.append(f"No Creation Date set")
+            exif_data_texts.append("No Creation Date set")
 
         if "GPS" in exif_dict:
             gps_data = self.parse_gps_data(exif_dict["GPS"])
@@ -280,7 +285,7 @@ class ImageExifEditor(QMainWindow):
 
         for index in self.image_list_widget.selectedIndexes():
             filename = index.data()
-            filepath = os.path.join(self.current_directory, filename)
+            filepath = Path(self.current_directory) / filename
             self.update_exif_data(filepath, new_date, new_gps)
         self.statusBar.showMessage("Changes applied successfully", 5000)
 
@@ -319,8 +324,7 @@ class ImageExifEditor(QMainWindow):
         self.progress_bar.setValue(0)
 
         self.image_loader_thread = ImageLoaderThread(
-            folder_path,
-            self.thumbnail_size_slider.maximum()
+            folder_path, self.thumbnail_size_slider.maximum()
         )
         self.image_loader_thread.progress_update.connect(self.on_progress_update)
         self.image_loader_thread.finished_loading.connect(self.on_finished_loading)
