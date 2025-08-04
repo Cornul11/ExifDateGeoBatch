@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QThread, pyqtSignal, QDir
+from PyQt6.QtCore import QThread, pyqtSignal, QDir, Qt, QSize
 from PyQt6.QtGui import QPixmap, QIcon, QStandardItem
 
 
@@ -6,9 +6,10 @@ class ImageLoaderThread(QThread):
     progress_update = pyqtSignal(int)
     finished_loading = pyqtSignal(list)
 
-    def __init__(self, folder_path):
+    def __init__(self, folder_path, max_thumbnail_size):
         super().__init__()
         self.folder_path = folder_path
+        self.thumbnail_size = QSize(max_thumbnail_size, max_thumbnail_size)
 
     def run(self):
         img_dir = QDir(self.folder_path)
@@ -17,7 +18,10 @@ class ImageLoaderThread(QThread):
         loaded_images = []
 
         for i, file in enumerate(file_list):
-            pixmap = QPixmap(img_dir.absoluteFilePath(file))
+            pixmap = QPixmap(img_dir.absoluteFilePath(file)).scaled(
+                self.thumbnail_size,
+                Qt.AspectRatioMode.KeepAspectRatio
+            )
             icon = QIcon(pixmap)
 
             item = QStandardItem(icon, file)

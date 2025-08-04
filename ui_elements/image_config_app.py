@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
 
 from custom_widgets.custom_list_view import CustomListView
 from utils.exif_utils import convert_to_degrees
-from utils.exif_utils import format_gps_for_exif, is_valid_gps, format_date_for_exif
+from utils.exif_utils import format_gps_for_exif, is_valid_date, is_valid_gps, format_date_for_exif
 from utils.image_loader_thread import ImageLoaderThread
 from utils.python_bridge import PythonBridge
 
@@ -93,6 +93,10 @@ class ImageExifEditor(QMainWindow):
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
+            }
+
+            ::disabled {
+                color: gray;
             }
         """
         )
@@ -215,6 +219,8 @@ class ImageExifEditor(QMainWindow):
             date_parts = current_date[:10].split(":")
             current_date = current_date[:10].replace(":", "-")
             exif_data_texts.append(f"Original Creation Date: {current_date}")
+        else:
+            exif_data_texts.append(f"No Creation Date set")
 
         if "GPS" in exif_dict:
             gps_data = self.parse_gps_data(exif_dict["GPS"])
@@ -224,9 +230,10 @@ class ImageExifEditor(QMainWindow):
             exif_data_texts.append(f"GPS Coordinates: {current_gps}")
 
         self.exif_data_label.setText("\n".join(exif_data_texts))
-        self.date_edit.setDate(
-            QDate(int(date_parts[0]), int(date_parts[1]), int(date_parts[2]))
-        )
+        if date_parts:
+            self.date_edit.setDate(
+                QDate(int(date_parts[0]), int(date_parts[1]), int(date_parts[2]))
+            )
         self.gps_edit.setText(current_gps)
 
     def parse_gps_data(self, gps_dict):
@@ -260,7 +267,7 @@ class ImageExifEditor(QMainWindow):
         new_date = self.date_edit.date().toString("yyyy-MM-dd")
         new_gps = self.gps_edit.text()
 
-        if not self.is_valid_date(new_date):
+        if not is_valid_date(new_date):
             self.statusBar.showMessage(
                 "Invalid date format. Please use YYYY-MM-DD", 5000
             )
@@ -311,7 +318,10 @@ class ImageExifEditor(QMainWindow):
         self.progress_bar.show()
         self.progress_bar.setValue(0)
 
-        self.image_loader_thread = ImageLoaderThread(folder_path)
+        self.image_loader_thread = ImageLoaderThread(
+            folder_path,
+            self.thumbnail_size_slider.maximum()
+        )
         self.image_loader_thread.progress_update.connect(self.on_progress_update)
         self.image_loader_thread.finished_loading.connect(self.on_finished_loading)
         self.image_loader_thread.start()
